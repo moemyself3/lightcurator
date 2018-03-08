@@ -23,7 +23,6 @@ from astropy.table import Table
 import multiprocessing as mp
 from astropy.time import Time
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 
 def plot(object_table):
     """
@@ -50,14 +49,14 @@ def plot(object_table):
     for i in range(0,total_frames):
         t=t+datelist[i]
     t = Time(t)
-    
+
     flux = []
     for i in range(0,total_frames):
         for j in range(0,lens[i]):
             flux.append(object_table['sources'][i]['flux'][j])
 
     plt.plot(t.plot_date,flux,'o')
-    
+
     timeseries_plot = 1
     return timeseries_plot
 
@@ -172,7 +171,7 @@ def paralign(object_table):
     ref_index = len(data)//2
     ref_img = data[ref_index]
     object_table['ref'] = [ref_img] * len(data)
-    
+
     pool = mp.Pool()
     # align images to reference image
     aligned = []
@@ -197,18 +196,16 @@ def parextract(object_table):
     sources = []
     aligned_objects = object_table['aligned']
     object_table['kwargs_stat'] = {'sigma':3.0, 'iters':5}
-  
-    nobjects = len(aligned_objects)
-    
+
     pool = mp.Pool()
-    
+
     args_stat = aligned_objects
     kwargs_stat = object_table['kwargs_stat']
     iterable_stat = zip(args_stat,kwargs_stat)
-    
+
     sigma_clipped_stats = pool.starmap(sigma_clipped_wrapper, iterable_stat)
     mean, median, std = zip(*sigma_clipped_stats)
-    
+
     # Next Subtract background and use DAOStarFinder
     args_dao = zip(aligned_objects, median)
     kwargs_dao = []
@@ -222,7 +219,7 @@ def parextract(object_table):
     object_table['sources'] = sources
     pool.close()
     pool.join()
-    
+
     return object_table
 
 def sigma_clipped_wrapper(data, kwargs):
@@ -235,22 +232,22 @@ def DAOStarFinder_wrapper(data, kwargs):
 def do_lightcurve():
     print('makelist...')
     object_table = makelist('')
-    
+
     print('makelist complete...')
-    
+
     #shorttable = object_table #[0:10]
     print('alignment...')
     object_table = paralign(object_table)
-    
+
     print('alignment complete...')
     print('extraction...')
-    object_table = parextract(shorttable)
-    
+    object_table = parextract(object_table)
+
     print('extraction complete...')
     print('plotting')
     plot(object_table)
     return object_table
 
-    
+
 if __name__ == '__main__':
     print('test')
