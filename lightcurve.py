@@ -56,9 +56,7 @@ def plot(object_table):
             flux.append(object_table['sources'][i]['flux'][j])
 
     plt.plot(t.plot_date,flux,'o')
-
-    timeseries_plot = 1
-    return timeseries_plot
+    return object_table
 
 def align(object_table):
     """

@@ -32,7 +32,8 @@ The process follows:
      - Reduce images
      - Assign WCS*
 2. Align images (How does reducing affect WCS?)
-3. Sorce extraction
+2.1 [Create a deep sky image pending]
+3. Sorce extraction [from deepsky image]
 4. Match sources between images [pending]
 5. Create Timeseries **plot** of different sources
 6. Create **reference image** with all candidate sources circled
