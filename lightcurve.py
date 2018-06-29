@@ -23,6 +23,7 @@ from astropy.table import Table
 import multiprocessing as mp
 from astropy.time import Time
 import matplotlib.pyplot as plt
+import subprocess
 
 def plot(object_table):
     """
@@ -246,6 +247,27 @@ def do_lightcurve():
     plot(object_table)
     return object_table
 
+def do_deepsky(object_table):
+    deepsky = np.zeros_like(object_table['aligned'][0])
+    for item in object_table['aligned']:
+        deepsky = deepsky + item
+    return deepsky
+
+class mm:
+    def minmax(self):
+        median = []
+        mean = []
+        median = np.median(self)*.95
+        mean = np.mean(self)
+        vmin, vmax = (mean - median, mean + median)
+        return vmin, vmax
+
+def makepic(data):
+    vmin,vmax = mm.minmax(data)
+    plt.imshow(data, cmap='Greys', origin='lower', vmin=vmin, vmax=vmax)
+
+def astrometry(data):
+    subprocess.run(['solve-field',data])
 
 if __name__ == '__main__':
-    print('test')
+    print('main does nothing')
