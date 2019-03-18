@@ -267,7 +267,10 @@ def makepic(data):
     plt.imshow(data, cmap='Greys', origin='lower', vmin=vmin, vmax=vmax)
 
 def astrometry(data):
+    #Take aligned image and add wcs
     subprocess.run(['solve-field',data])
+
+    #get RA,DEC coordinates to do a skymatch
 
 if __name__ == '__main__':
     print('main does nothing')
