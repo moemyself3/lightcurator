@@ -1,0 +1,3 @@
+include README.md
+include license.txt
+include requirements.txt

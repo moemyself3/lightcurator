@@ -10,7 +10,7 @@ Copyright (c) 2018-2019 Moises Castillo
 All rights reserved.
 """
 
-__version__ = "1.0"
+__version__ = '1.0.0a0'
 
 import astroalign as aa
 from os import listdir

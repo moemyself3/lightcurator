@@ -1,0 +1,1 @@
+name = "lightcurve_test"
