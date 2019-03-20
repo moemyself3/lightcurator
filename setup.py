@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 # Get the version from file itself (not imported)
-with open('lightcurve/lightcurve.py', 'r') as f:
+with open('lightcurator/lightcurve.py', 'r') as f:
     for line in f:
         if line.startswith("__version__"):
             _, _, lc_version = line.replace("'", '').split()

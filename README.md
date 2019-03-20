@@ -14,7 +14,7 @@ and studies of variable stars, i.e. eclipsing binaries.
 # Usage
 
 ```
-import lightcurves as lc
+from lightcurator import lightcurves as lc
 
 object_table = lc.makelist('')
 
