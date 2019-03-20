@@ -1,3 +1,5 @@
+[![Documentation Status](https://readthedocs.org/projects/lightcurator/badge/?version=latest)](https://lightcurator.readthedocs.io/en/latest/?badge=latest)
+
 # LightCurve
 
 LightCurve is a module that creates light curves of a similar field of stars.
