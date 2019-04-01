@@ -169,10 +169,13 @@ def paralign(object_table):
     date = []
     for item in image_list:
         sci_data = fits.open(item)[0]
-        data.append(np.asarray(sci_data.data))
+        data.append(ccdproc.cosmicray_lacosmic(sci_data.data)[0])
         date.append(sci_data.header['DATE-OBS'])
     object_table['date'] = date
     object_table['data'] = data
+
+    # sort table by date
+    object_table.sort('date')
 
     # pick reference image
     ref_index = len(data)//2
