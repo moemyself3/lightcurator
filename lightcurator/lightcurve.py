@@ -10,7 +10,7 @@ Copyright (c) 2018-2019 Moises Castillo
 All rights reserved.
 """
 
-__version__ = '1.0.0a0'
+__version__ = '1.0.0a1'
 
 import astroalign as aa
 from os import listdir
@@ -22,6 +22,7 @@ from photutils import DAOStarFinder
 from astropy.table import Table
 import multiprocessing as mp
 from astropy.time import Time
+from datetime import datetime
 import matplotlib.pyplot as plt
 import subprocess
 
@@ -56,7 +57,11 @@ def plot(object_table):
         for j in range(0,lens[i]):
             flux.append(object_table['sources'][i]['flux'][j])
 
+    fig = plt.figure()
     plt.plot(t.plot_date,flux,'o')
+    timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    fig.savefig('plot_'+timestamp+'.png')
+    plt.close(fig)
     return object_table
 
 def align(object_table):
@@ -139,7 +144,6 @@ def makelist(mypath):
         a table of object paths
     """
     # Import file list
-    mypath = '/Users/mcastillo/Desktop/20170420_test'
     image_list = Table()
     image_list['path'] = [join(mypath,f) for f in listdir(mypath) if isfile(join(mypath, f))]
     return image_list
@@ -263,8 +267,22 @@ class mm:
         return vmin, vmax
 
 def makepic(data):
+    """
+    Create an image from data frame.
+
+    Args:
+        data: CCDData object
+
+    Returns:
+        frame as png file
+    """
+
     vmin,vmax = mm.minmax(data)
+    fig = plt.figure()
     plt.imshow(data, cmap='Greys', origin='lower', vmin=vmin, vmax=vmax)
+    timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    fig.savefig('frame_'+timestamp+'.png')
+    plt.close(fig)
 
 def astrometry(data):
     #Take aligned image and add wcs
