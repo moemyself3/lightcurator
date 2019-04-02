@@ -1,1 +1,2 @@
-name = "lightcurve"
+name = 'lightcurve'
+__version__ = '1.0a2'

@@ -10,8 +10,6 @@ Copyright (c) 2018-2019 Moises Castillo
 All rights reserved.
 """
 
-__version__ = '1.0.0a1'
-
 import astroalign as aa
 from os import listdir
 from os.path import isfile, join
@@ -313,7 +311,7 @@ def tryregister(data, source, target, sigclip, strict=True):
             return aligned, sigclip
         except aa.MaxIterError:
             if strict == False:
-                sigclip+=0.5
+                sigclip+=5
                 source = hotpixfix_wrapper(data,sigclip)
                 attempts += 1
             elif strict == True:
