@@ -145,7 +145,7 @@ def makelist(mypath):
     image_list['path'] = [join(mypath,f) for f in listdir(mypath) if isfile(join(mypath, f))]
     return image_list
 
-def paralign(object_table):
+def paralign(object_table, strict=True):
     """
     Parallel processing: Align images from image_list.
 
@@ -170,13 +170,11 @@ def paralign(object_table):
 
     process_limit = mp.cpu_count() - 1
     pool = mp.Pool(processes=process_limit)
-
+    strictlist = [strict]*len(data)
     # align images to reference image
-    aligned = []
-    args_align = zip(object_table['data'], object_table['filtered'], object_table['ref'], object_table['sigclip'])
-    aligned, sigclip = pool.starmap(tryregister, args_align)
-    object_table['aligned'] = aligned
-    object_table['sigclip'] = sigclip
+    args_align = zip(object_table['data'], object_table['filtered'], object_table['ref'], object_table['sigclip'], strictlist)
+    output = pool.starmap(tryregister, args_align)
+    object_table['aligned'], object_table['sigclip'] = zip(*output)
     pool.close()
     pool.join()
     return object_table
@@ -307,17 +305,19 @@ def hotpixfix(object_table, sigclip=4.5):
     pool.join()
     return object_table
 
-def tryregister(data, source, target, sigclip):
+def tryregister(data, source, target, sigclip, strict=True):
     attempts = 0
-    while attempts < 1:
+    while attempts < 3:
         try:
             aligned = aa.register(source, target)
             return aligned, sigclip
         except aa.MaxIterError:
-            #sigclip+=0.5
-            #source = hotpixfix_wrapper(data,sigclip)
-            attempts += 1
-            pass
+            if strict == False:
+                sigclip+=0.5
+                source = hotpixfix_wrapper(data,sigclip)
+                attempts += 1
+            elif strict == True:
+                return np.zeros_like(data), sigclip
     return np.zeros_like(data), sigclip
 
 def astrometry(data):
