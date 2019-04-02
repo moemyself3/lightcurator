@@ -76,16 +76,9 @@ def align(object_table):
         a table of objects that have matching field of view
     """
 
-    image_list = object_table['path']
     # use file list to make data objects
-    data = []
-    date = []
-    for item in image_list:
-        sci_data = fits.open(item)[0]
-        data.append(ccdproc.cosmicray_lacosmic(sci_data.data)[0])
-        date.append(sci_data.header['DATE-OBS'])
-    object_table['date'] = date
-    object_table['data'] = data
+    object_table = makedata(object_table)
+    data = object_table['data']
 
     # sort table by date
     object_table.sort('date')
@@ -163,16 +156,9 @@ def paralign(object_table):
         a table of objects that have matching field of view
     """
 
-    image_list = object_table['path']
     # use file list to make data objects
-    data = []
-    date = []
-    for item in image_list:
-        sci_data = fits.open(item)[0]
-        data.append(ccdproc.cosmicray_lacosmic(sci_data.data)[0])
-        date.append(sci_data.header['DATE-OBS'])
-    object_table['date'] = date
-    object_table['data'] = data
+    object_table = makedata(object_table)
+    data = object_table['filtered']
 
     # sort table by date
     object_table.sort('date')
@@ -182,13 +168,15 @@ def paralign(object_table):
     ref_img = data[ref_index]
     object_table['ref'] = [ref_img] * len(data)
 
-    pool = mp.Pool()
+    process_limit = mp.cpu_count() - 1
+    pool = mp.Pool(processes=process_limit)
+
     # align images to reference image
     aligned = []
-    args_align = zip(object_table['ref'], object_table['data'])
-    aligned = pool.starmap(aa.align_image, args_align)
+    args_align = zip(object_table['data'], object_table['filtered'], object_table['ref'], object_table['sigclip'])
+    aligned, sigclip = pool.starmap(tryregister, args_align)
     object_table['aligned'] = aligned
-
+    object_table['sigclip'] = sigclip
     pool.close()
     pool.join()
     return object_table
@@ -207,7 +195,8 @@ def parextract(object_table):
     aligned_objects = object_table['aligned']
     object_table['kwargs_stat'] = {'sigma':3.0, 'iters':5}
 
-    pool = mp.Pool()
+    process_limit = mp.cpu_count() - 1
+    pool = mp.Pool(processes=process_limit)
 
     args_stat = aligned_objects
     kwargs_stat = object_table['kwargs_stat']
@@ -290,6 +279,46 @@ def makepic(data, filename='frame'):
     timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
     fig.savefig(filename+'_'+timestamp+'.png')
     plt.close(fig)
+
+def makedata(object_table):
+    data = []
+    date = []
+    image_list = object_table['path']
+    for item in image_list:
+        sci_data = fits.open(item)[0]
+        data.append(np.asarray(sci_data.data))
+        date.append(sci_data.header['DATE-OBS'])
+    object_table['date'] = date
+    object_table['data'] = data
+    object_table = hotpixfix(object_table)
+    return object_table
+
+def hotpixfix_wrapper(sci_data, sigclip=4.5):
+    return ccdproc.cosmicray_lacosmic(sci_data, sigclip=sigclip)[0]
+
+def hotpixfix(object_table, sigclip=4.5):
+    object_table['sigclip'] = sigclip
+    process_limit = mp.cpu_count() - 1
+    pool = mp.Pool(processes=process_limit)
+    args_hotpixfix = zip(object_table['data'], object_table['sigclip'])
+    filtered = pool.starmap(hotpixfix_wrapper, args_hotpixfix)
+    object_table['filtered'] = filtered
+    pool.close()
+    pool.join()
+    return object_table
+
+def tryregister(data, source, target, sigclip):
+    attempts = 0
+    while attempts < 1:
+        try:
+            aligned = aa.register(source, target)
+            return aligned, sigclip
+        except aa.MaxIterError:
+            #sigclip+=0.5
+            #source = hotpixfix_wrapper(data,sigclip)
+            attempts += 1
+            pass
+    return np.zeros_like(data), sigclip
 
 def astrometry(data):
     #Take aligned image and add wcs
