@@ -11,7 +11,7 @@ All rights reserved.
 """
 
 import astroalign as aa
-from os import listdir
+from os import listdir, mkdir
 from os.path import isfile, join
 from astropy.io import fits
 import numpy as np
@@ -268,7 +268,6 @@ def makepic(data, filename='frame'):
     Returns:
         frame as png file
     """
-
     vmin,vmax = mm.minmax(data)
     fig = plt.figure()
     plt.imshow(data, cmap='Greys', origin='lower', vmin=vmin, vmax=vmax)
@@ -284,6 +283,7 @@ def makedata(object_table):
         sci_data = fits.open(item)[0]
         data.append(np.asarray(sci_data.data))
         date.append(sci_data.header['DATE-OBS'])
+
     object_table['date'] = date
     object_table['data'] = data
     object_table = hotpixfix(object_table)
@@ -314,13 +314,64 @@ def tryregister(data, source, target, sigclip, strict=True):
                 sigclip+=5
                 source = hotpixfix_wrapper(data,sigclip)
                 attempts += 1
-            elif strict == True:
+            if strict == True:
                 return np.zeros_like(data), sigclip
     return np.zeros_like(data), sigclip
 
-def astrometry(data):
+def lightcurator(mypath):
+    """
+    All in one function to create lightcurves
+
+    Args:
+        path: string, path to root directory that contains timeseries data
+
+    Returns:
+        a deepsky fits file with WCS
+    """
+    #Make pathlist
+    object_table = makelist(mypath)
+
+    date = []
+    image_list = object_table['path']
+
+    # Make a time stamp column
+    for item in image_list:
+        with fits.open(item) as sci_data:
+            date.append(sci_data[0].header['DATE-OBS'])
+    object_table['date'] = date
+
+    # find reference image
+    object_table.sort('date')
+    # sample set for testing
+    #object_table = object_table[0:100]
+    ref_index = len(object_table['date'])//2
+
+    with fits.open(object_table['path'][ref_index]) as sci_data:
+        ref_img = hotpixfix_wrapper(sci_data[0].data)
+
+    # read, filter, align images
+    deepsky=np.zeros_like(ref_img)
+    sigclip = 4.5
+    for item in object_table['path']:
+        with fits.open(item) as sci_data:
+            filtered = hotpixfix_wrapper(sci_data[0].data)
+        aligned, _ = tryregister(np.zeros_like(filtered), filtered, ref_img, sigclip)
+        deepsky = deepsky + aligned
+
+    # make directory for output files
+    mkdir('light_collection')
+    makepic(deepsky, 'light_collection/deepsky-preview')
+    hdu = fits.PrimaryHDU(deepsky)
+    hdul = fits.HDUList([hdu])
+    timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    deepskyfits = 'light_collection/deepsky-'+timestamp+'.fits'
+    hdul.writeto(deepskyfits)
+    listdir(mypath)
+    return deepskyfits
+
+def astrometry(fitsfile):
     #Take aligned image and add wcs
-    subprocess.run(['solve-field',data])
+    subprocess.run(['solve-field',fitsfile])
 
     #get RA,DEC coordinates to do a skymatch
 
