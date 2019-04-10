@@ -11,8 +11,8 @@ All rights reserved.
 """
 
 import astroalign as aa
-from os import listdir, mkdir
-from os.path import isfile, join
+from os import listdir, makedirs
+from os.path import isfile, join, basename
 from astropy.io import fits
 import numpy as np
 from astropy.stats import sigma_clipped_stats
@@ -24,16 +24,18 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import subprocess
 import ccdproc
+import itertools
+import time
 
 def plot(object_table):
     """
-    Create a timeseries plot of stars.
+    Create a time series plot of stars.
 
     Args:
         candidate_catalog: a catalog of candidate variables with timestamp
 
     Returns:
-        a plot of the candiate variables
+        a plot of the candidate variables
     """
 
     total_frames = len(object_table)
@@ -58,7 +60,7 @@ def plot(object_table):
 
     fig = plt.figure()
     plt.plot(t.plot_date,flux,'o')
-    timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     fig.savefig('plot_'+timestamp+'.png')
     plt.close(fig)
     return object_table
@@ -170,7 +172,7 @@ def paralign(object_table, strict=True):
     pool = mp.Pool(processes=process_limit)
     strictlist = [strict]*len(data)
     # align images to reference image
-    args_align = zip(object_table['data'], object_table['filtered'], object_table['ref'], object_table['sigclip'], strictlist)
+    args_align = zip(object_table['path'], object_table['filtered'], object_table['ref'], object_table['sigclip'], strictlist)
     output = pool.starmap(tryregister, args_align)
     object_table['aligned'], object_table['sigclip'] = zip(*output)
     pool.close()
@@ -243,7 +245,7 @@ def do_lightcurve():
     plot(object_table)
     return object_table
 
-def do_deepsky(object_table):
+def do_deepsky_table(object_table):
     deepsky = np.zeros_like(object_table['aligned'][0])
     for item in object_table['aligned']:
         deepsky = deepsky + item
@@ -303,22 +305,26 @@ def hotpixfix(object_table, sigclip=4.5):
     pool.join()
     return object_table
 
-def tryregister(data, source, target, sigclip, strict=True):
+def tryregister(path, source, target, sigclip, strict=True):
     attempts = 0
     while attempts < 3:
         try:
             aligned = aa.register(source, target)
+            hdu = fits.PrimaryHDU(aligned)
+            hdul = fits.HDUList([hdu])
+            aligned_fits = 'light_collection/aligned/'+basename(path)+'_aligned.fits'
+            hdul.writeto(aligned_fits)
             return aligned, sigclip
         except aa.MaxIterError:
-            if strict == False:
+            if strict:
+                return np.zeros_like(source), sigclip
+            if not strict:
                 sigclip+=5
-                source = hotpixfix_wrapper(data,sigclip)
+                source = hotpixfix_wrapper(path,sigclip)
                 attempts += 1
-            if strict == True:
-                return np.zeros_like(data), sigclip
-    return np.zeros_like(data), sigclip
+    return np.zeros_like(source), sigclip
 
-def lightcurator(mypath):
+def lightcurator(mypath, parallel=False):
     """
     All in one function to create lightcurves
 
@@ -342,32 +348,67 @@ def lightcurator(mypath):
 
     # find reference image
     object_table.sort('date')
+
     # sample set for testing
-    #object_table = object_table[0:100]
+    object_table = object_table[0:10]
     ref_index = len(object_table['date'])//2
 
     with fits.open(object_table['path'][ref_index]) as sci_data:
-        ref_img = hotpixfix_wrapper(sci_data[0].data)
-
-    # read, filter, align images
-    deepsky=np.zeros_like(ref_img)
-    sigclip = 4.5
-    for item in object_table['path']:
-        with fits.open(item) as sci_data:
-            filtered = hotpixfix_wrapper(sci_data[0].data)
-        aligned, _ = tryregister(np.zeros_like(filtered), filtered, ref_img, sigclip)
-        deepsky = deepsky + aligned
+         ref_img = hotpixfix_wrapper(sci_data[0].data)
 
     # make directory for output files
-    mkdir('light_collection')
-    makepic(deepsky, 'light_collection/deepsky-preview')
+    root = 'light_collection'
+    output_directories = ['/deepsky', '/aligned', '/cats']
+    output_directories = [root+directory for directory in output_directories]
+    for directory in output_directories:
+        makedirs(directory, exist_ok=True)
+
+    # read, filter, align images
+    sigclip = 4.5
+    print('is parallel: ' + str(parallel))
+    if not parallel:
+        print('deepsky process: serial')
+        start = time.time()
+        deepsky=np.zeros_like(ref_img)
+        for item in object_table['path']:
+            with fits.open(item) as sci_data:
+                filtered = hotpixfix_wrapper(sci_data[0].data)
+            aligned, _ = tryregister(item, filtered, ref_img, sigclip)
+            deepsky = deepsky + aligned
+        print('deepsky complete!')
+        end = time.time()
+        print('time: '+str(end - start))
+    else:
+        print('deepsky process: parallel')
+        start = time.time()
+        process_limit = mp.cpu_count() - 1
+        pool = mp.Pool(processes=process_limit)
+
+        args_do_deepsky = zip(object_table['path'], itertools.repeat(ref_img), itertools.repeat(sigclip))
+        deepsky = sum(pool.starmap(do_align, args_do_deepsky))
+        pool.close()
+        pool.join()
+        print('parallel processed deepsky complete!')
+        end = time.time()
+        print('time: '+str(end - start))
+
+    makepic(deepsky, 'light_collection/deepsky/deepsky_preview')
     hdu = fits.PrimaryHDU(deepsky)
     hdul = fits.HDUList([hdu])
-    timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-    deepskyfits = 'light_collection/deepsky-'+timestamp+'.fits'
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    deepskyfits = 'light_collection/deepsky/deepsky_'+timestamp+'.fits'
     hdul.writeto(deepskyfits)
     listdir(mypath)
     return deepskyfits
+
+def do_align(path, ref_img, sigclip):
+    aligned = np.zeros_like(ref_img)
+
+    with fits.open(path) as sci_data:
+        filtered = hotpixfix_wrapper(sci_data[0].data)
+
+    aligned, _ = tryregister(path, filtered, ref_img, sigclip)
+    return aligned
 
 def astrometry(fitsfile):
     #Take aligned image and add wcs
