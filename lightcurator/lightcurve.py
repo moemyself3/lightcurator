@@ -11,9 +11,10 @@ All rights reserved.
 """
 
 import astroalign as aa
-from os import listdir, makedirs
-from os.path import isfile, join, basename
+from os import listdir, makedirs, remove
+from os.path import isfile, join, basename, splitext
 from astropy.io import fits
+from astropy.wcs import WCS
 import numpy as np
 from astropy.stats import sigma_clipped_stats
 from photutils import DAOStarFinder
@@ -312,7 +313,8 @@ def tryregister(path, source, target, sigclip, strict=True):
             aligned = aa.register(source, target)
             hdu = fits.PrimaryHDU(aligned)
             hdul = fits.HDUList([hdu])
-            aligned_fits = 'light_collection/aligned/'+basename(path)+'_aligned.fits'
+            filename, _ = splitext(basename(path))
+            aligned_fits = 'light_collection/aligned/'+filename+'_aligned.fits'
             hdul.writeto(aligned_fits)
             return aligned, sigclip
         except aa.MaxIterError:
@@ -350,18 +352,13 @@ def lightcurator(mypath, parallel=False):
     object_table.sort('date')
 
     # sample set for testing
-    object_table = object_table[0:10]
+    object_table = object_table[0:100]
     ref_index = len(object_table['date'])//2
 
     with fits.open(object_table['path'][ref_index]) as sci_data:
          ref_img = hotpixfix_wrapper(sci_data[0].data)
 
-    # make directory for output files
-    root = 'light_collection'
-    output_directories = ['/deepsky', '/aligned', '/cats']
-    output_directories = [root+directory for directory in output_directories]
-    for directory in output_directories:
-        makedirs(directory, exist_ok=True)
+    setup_dirs()
 
     # read, filter, align images
     sigclip = 4.5
@@ -398,7 +395,26 @@ def lightcurator(mypath, parallel=False):
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     deepskyfits = 'light_collection/deepsky/deepsky_'+timestamp+'.fits'
     hdul.writeto(deepskyfits)
-    listdir(mypath)
+
+    # Do astrometry
+    print('starting astrometry...')
+    fitsfile_wcs = astrometry(deepskyfits)
+    print('astrometry complete!')
+
+    # get WCS from .new file
+    with fits.open(fitsfile_wcs) as wcsframe:
+        thewcs = WCS(wcsframe[0].header)
+        header = thewcs.to_header()
+
+    # attach wcs to aligned frames
+    alignpath = 'light_collection/aligned/'
+    for aligned_file in listdir(alignpath):
+        aligned_filepath = alignpath+aligned_file
+        with fits.open(aligned_filepath) as aligned_hdu:
+            fits.writeto(aligned_filepath, aligned_hdu[0].data, header, overwrite=True)
+
+    # with open.fits(deepskyfits)
+
     return deepskyfits
 
 def do_align(path, ref_img, sigclip):
@@ -410,11 +426,33 @@ def do_align(path, ref_img, sigclip):
     aligned, _ = tryregister(path, filtered, ref_img, sigclip)
     return aligned
 
-def astrometry(fitsfile):
-    #Take aligned image and add wcs
-    subprocess.run(['solve-field',fitsfile])
+def setup_dirs():
+    # make directory for output files
+    root = 'light_collection'
+    output_directories = ['/deepsky', '/aligned', '/cats']
+    output_directories = [root+directory for directory in output_directories]
+    for directory in output_directories:
+        makedirs(directory, exist_ok=True)
+    return output_directories
 
-    #get RA,DEC coordinates to do a skymatch
+def astrometry(fitsfile):
+    # Take aligned image and add wcs
+    subprocess.run(['solve-field',fitsfile], check=True)
+
+    fitsfile_wcs = fitsfile.replace('.fits', '.new')
+
+    # check if file exists
+    if not isfile(fitsfile_wcs):
+        raise FileNotFoundError('The solved fits file does not exist')
+
+    # get RA,DEC coordinates to do a skymatch
+    return fitsfile_wcs
+
+def clean():
+    dirs_to_clean = setup_dirs()
+    for directory in dirs_to_clean:
+        for item in listdir(directory):
+            remove(directory+'/'+item)
 
 if __name__ == '__main__':
     print('main does nothing')
