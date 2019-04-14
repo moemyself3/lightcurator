@@ -19,6 +19,7 @@ import numpy as np
 from astropy.stats import sigma_clipped_stats
 from photutils import DAOStarFinder
 from astropy.table import Table
+from astropy.visualization import ZScaleInterval
 import multiprocessing as mp
 from astropy.time import Time
 from datetime import datetime
@@ -276,6 +277,13 @@ def makepic(data, filename='frame'):
     plt.imshow(data, cmap='Greys', origin='lower', vmin=vmin, vmax=vmax)
     timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
     fig.savefig(filename+'_'+timestamp+'.png')
+    plt.close(fig)
+
+def makepic_zscale(data, filename='frame'):
+    zscale = ZScaleInterval()
+    fig = plt.figure()
+    plt.imshow(zscale(data), cmap='Greys', origin='lower')
+    fig.savefig(filename+'.png')
     plt.close(fig)
 
 def makedata(object_table):
