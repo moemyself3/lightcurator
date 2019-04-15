@@ -13,17 +13,17 @@ All rights reserved.
 import astroalign as aa
 from os import listdir, makedirs, remove
 from os.path import isfile, join, basename, splitext
-from astropy.io import fits
+from astropy.io import fits, ascii
 from astropy.wcs import WCS
-import numpy as np
 from astropy.stats import sigma_clipped_stats
-from photutils import DAOStarFinder
 from astropy.table import Table
 from astropy.visualization import ZScaleInterval
-import multiprocessing as mp
 from astropy.time import Time
+from photutils import DAOStarFinder
 from datetime import datetime
 import matplotlib.pyplot as plt
+import numpy as np
+import multiprocessing as mp
 import subprocess
 import ccdproc
 import itertools
@@ -111,7 +111,7 @@ def extract(object_table):
     aligned_objects = object_table['aligned']
 
     for data in aligned_objects:
-        mean, median, std = sigma_clipped_stats(data, sigma=3.0, iters=5)
+        mean, median, std = sigma_clipped_stats(data, sigma=3.0, maxiters=5)
 
         # Next Subtract background and use DAOStarFinder
         daofind = DAOStarFinder(fwhm = 10.0, threshold=5.*std)
@@ -133,7 +133,7 @@ def matchcat(timeseries_catalog):
     candidate_catalog = 1
     return candidate_catalog
 
-def makelist(mypath):
+def makelist(mypath, column_title='path'):
     """
     Make list of objects
 
@@ -144,7 +144,7 @@ def makelist(mypath):
     """
     # Import file list
     image_list = Table()
-    image_list['path'] = [join(mypath,f) for f in listdir(mypath) if isfile(join(mypath, f))]
+    image_list[column_title] = [join(mypath,f) for f in listdir(mypath) if isfile(join(mypath, f))]
     return image_list
 
 def paralign(object_table, strict=True):
@@ -181,7 +181,7 @@ def paralign(object_table, strict=True):
     pool.join()
     return object_table
 
-def parextract(object_table):
+def parextract_table(object_table):
     """
     Create catalog of sources
 
@@ -193,7 +193,7 @@ def parextract(object_table):
     """
     sources = []
     aligned_objects = object_table['aligned']
-    object_table['kwargs_stat'] = {'sigma':3.0, 'iters':5}
+    object_table['kwargs_stat'] = {'sigma':3.0, 'maxiters':5}
 
     process_limit = mp.cpu_count() - 1
     pool = mp.Pool(processes=process_limit)
@@ -221,12 +221,64 @@ def parextract(object_table):
 
     return object_table
 
-def sigma_clipped_wrapper(data, kwargs):
-    return sigma_clipped_stats(data,**kwargs)
+def parextract_path(object_table=None):
+    """
+    Create catalog of sources
 
-def DAOStarFinder_wrapper(data, kwargs):
-    daofind = DAOStarFinder(**kwargs)
-    return daofind(data[1] - data[0])
+    Args:
+        aligned_objects: CCDData objects that have matching field of view
+
+    Returns:
+        a catalog of sources with their timestamp
+    """
+    if not object_table:
+        object_table = Table()
+    alignpath = 'light_collection/aligned/'
+    object_table = makelist(alignpath, 'aligned_path')
+
+    aligned_objects = object_table['aligned_path']
+    kwargs_stat = itertools.repeat({'sigma':3.0, 'maxiters':5})
+
+    process_limit = mp.cpu_count() - 1
+    pool = mp.Pool(processes=process_limit)
+
+    args_stat = aligned_objects
+    iterable_stat = zip(args_stat, kwargs_stat)
+    sigma_clipped_stat = pool.starmap(sigma_clipped_wrapper, iterable_stat)
+    mean, median, std = zip(*sigma_clipped_stat)
+
+    # Next Subtract background and use DAOStarFinder
+    args_dao = zip(aligned_objects, median)
+    kwargs_dao = []
+    for item in std:
+        kwargs_dao.append({'fwhm':10, 'threshold': 5.*item})
+    iterable_dao = zip(args_dao, kwargs_dao)
+
+    sources = pool.starmap(DAOStarFinder_wrapper,iterable_dao)
+
+    #object_table['sources'] = sources
+    pool.close()
+    pool.join()
+
+    name_source_list = zip(aligned_objects, sources)
+    for path, source_table in name_source_list:
+        filename, _ = splitext(basename(path))
+        ascii.write(source_table[0], 'light_collection/cats/'+filename+'.cat')
+    return object_table
+
+def sigma_clipped_wrapper(path, kwargs):
+    with fits.open(path) as fitsfile:
+        data = fitsfile[0].data
+        sigma_clipped_stat = sigma_clipped_stats(data, **kwargs)
+    return sigma_clipped_stat
+
+def DAOStarFinder_wrapper(args_dao, kwargs):
+    path = args_dao[0]
+    median = args_dao[1]
+    with fits.open(path) as fitsfile:
+        data = fitsfile[0].data
+        daofind = DAOStarFinder(**kwargs)
+        return daofind(data - median)
 
 def do_lightcurve():
     print('makelist...')
@@ -240,7 +292,7 @@ def do_lightcurve():
 
     print('alignment complete...')
     print('extraction...')
-    object_table = parextract(object_table)
+    object_table = parextract_table(object_table)
 
     print('extraction complete...')
     print('plotting')
@@ -419,9 +471,13 @@ def lightcurator(mypath, parallel=False):
     for aligned_file in listdir(alignpath):
         aligned_filepath = alignpath+aligned_file
         with fits.open(aligned_filepath) as aligned_hdu:
-            fits.writeto(aligned_filepath, aligned_hdu[0].data, header, overwrite=True)
+            aligned_data = aligned_hdu[0].data
+            fits.writeto(aligned_filepath, aligned_data, header, overwrite=True)
 
-    # with open.fits(deepskyfits)
+    # Source extraction
+
+    # Match Cat
+
 
     return deepskyfits
 
