@@ -16,7 +16,7 @@ from os.path import isfile, join, basename, splitext
 from astropy.io import fits, ascii
 from astropy.wcs import WCS
 from astropy.stats import sigma_clipped_stats
-from astropy.table import Table
+from astropy.table import Table, Column
 from astropy.visualization import ZScaleInterval
 from astropy.time import Time
 from photutils import DAOStarFinder
@@ -132,6 +132,21 @@ def matchcat(timeseries_catalog):
     """
     candidate_catalog = 1
     return candidate_catalog
+
+def make_catalog(aligned_table):
+    # get wcs and RA, DEC from aligned
+    for aligned_path, cat_path in zip(aligned_table['aligned_path'], aligned_table['cat_path']):
+        with fits.open(aligned_path) as hdu:
+            w = WCS(hdu[0].header)
+            cat = ascii.read(cat_path)
+            pixcrd = list(zip(cat['xcentroid'], cat['ycentroid']))
+            world = w.wcs_pix2world(pixcrd, 0)
+            ra, dec = zip(*world)
+            col_ra = Column(ra, name='ra')
+            col_dec = Column(dec, name='dec')
+            cat.add_columns([col_ra, col_dec])
+            # Update catalog
+            ascii.write(cat, cat_path)
 
 def makelist(mypath, column_title='path'):
     """
@@ -260,10 +275,14 @@ def parextract_path(object_table=None):
     pool.close()
     pool.join()
 
+    catpath = []
     name_source_list = zip(aligned_objects, sources)
     for path, source_table in name_source_list:
         filename, _ = splitext(basename(path))
-        ascii.write(source_table[0], 'light_collection/cats/'+filename+'.cat')
+        catfile = 'light_collection/cats/'+filename+'.cat'
+        ascii.write(source_table, catfile)
+        catpath.append(catfile)
+    object_table['cat_path'] = catpath
     return object_table
 
 def sigma_clipped_wrapper(path, kwargs):
@@ -475,11 +494,16 @@ def lightcurator(mypath, parallel=False):
             fits.writeto(aligned_filepath, aligned_data, header, overwrite=True)
 
     # Source extraction
+    aligned_table = parextract_path()
+
+    # Not necessary to continue
+    # Need to sort figure out how to correlate them to the original data
+    # object_table = hstack([object_table, aligned_table])
 
     # Match Cat
+    aligned_table, cat_path_min_sources = make_catalog(aligned_table)
 
-
-    return deepskyfits
+    return object_table
 
 def do_align(path, ref_img, sigclip):
     aligned = np.zeros_like(ref_img)
