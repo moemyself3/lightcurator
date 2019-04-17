@@ -550,15 +550,29 @@ def lightcurator(mypath, parallel=False):
     master_cat = ascii.read(master_cat_path)
     master_ra = master_cat['ra']
     master_dec = master_cat['dec']
-
     master_sky = SkyCoord(ra=master_ra*u.degree, dec=master_dec*u.degree)
-#    for aligned_file in align_image:
-#
-#    c = SkyCoord(ra=ra1*u.degree, dec=dec1*u.degree)
-#    master_sky_cat = SkyCoord(ra=ra2*u.degree, dec=dec2*u.degree)
 
-#    idx, d2d, d3d = c.match_to_catalog_sky(catalog)
-
+    matched_path = []
+    for catpath in aligned_table['cat_path']:
+        c = ascii.read(catpath)
+        c_ra = c['ra']
+        c_dec = c['dec']
+        c_sky = SkyCoord(ra=c_ra*u.degree, dec=c_dec*u.degree)
+        idx, d2d, d3d = c_sky.match_to_catalog_sky(master_sky)
+        t = d2d < 1*u.arcsec
+        c['sep_flag'] = t
+        c['idx'] = idx
+        ct = c.dtype
+        names, dtypes = zip(*ct.descr)
+        matched_cat = Table(names = names, dtype=dtypes)
+        for row, sep_flag in enumerate(c['sep_flag']):
+            if sep_flag:
+                matched_cat.add_row(c[row].as_void())
+        filename, _ = splitext(catpath)
+        filepath = 'light_collection/cats/'+basename(filename)+'_match.cat'
+        ascii.write(matched_cat, filepath, overwrite=True)
+        matched_path.append(filepath)
+    aligned_table['matched_path'] = matched_path
 
     return object_table
 
