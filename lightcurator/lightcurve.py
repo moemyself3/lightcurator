@@ -408,7 +408,7 @@ def makedata(object_table):
         sci_data = fits.open(item)[0]
         data.append(np.asarray(sci_data.data))
         date.append(sci_data.header['DATE-OBS'])
-
+        sci_data.close()
     object_table['date'] = date
     object_table['data'] = data
     object_table = hotpixfix(object_table)
@@ -435,6 +435,11 @@ def tryregister(path, source, target, sigclip, strict=True):
             aligned = aa.register(source, target)
             hdu = fits.PrimaryHDU(aligned)
             hdul = fits.HDUList([hdu])
+            hdr = hdul[0].header
+
+            with fits.open(path) as sci_data:
+                hdr['DATE-OBS'] = sci_data[0].header['DATE-OBS']
+
             filename, _ = splitext(basename(path))
             aligned_fits = 'light_collection/aligned/'+filename+'_aligned.fits'
             hdul.writeto(aligned_fits)
@@ -534,6 +539,8 @@ def lightcurator(mypath, parallel=False):
         aligned_filepath = alignpath+aligned_file
         with fits.open(aligned_filepath) as aligned_hdu:
             aligned_data = aligned_hdu[0].data
+            hdr = aligned_hdu[0].header
+            header['DATE-OBS'] = hdr['DATE-OBS']
             fits.writeto(aligned_filepath, aligned_data, header, overwrite=True)
 
     # Source extraction
