@@ -13,6 +13,8 @@ All rights reserved.
 import astroalign as aa
 from os import listdir, makedirs, remove
 from os.path import isfile, join, basename, splitext
+from astropy.coordinates import SkyCoord
+from astropy import units as u
 from astropy.io import fits, ascii
 from astropy.wcs import WCS
 from astropy.stats import sigma_clipped_stats
@@ -146,7 +148,7 @@ def make_catalog(aligned_table):
             col_dec = Column(dec, name='dec')
             cat.add_columns([col_ra, col_dec])
             # Update catalog
-            ascii.write(cat, cat_path)
+            ascii.write(cat, cat_path, overwrite=True)
 
 def makelist(mypath, column_title='path'):
     """
@@ -245,6 +247,10 @@ def parextract_path(object_table=None):
 
     Returns:
         a catalog of sources with their timestamp
+
+    Todo:
+        Need to make a single table with corresponding paths for aligned images
+         for time stamps.
     """
     if not object_table:
         object_table = Table()
@@ -280,10 +286,47 @@ def parextract_path(object_table=None):
     for path, source_table in name_source_list:
         filename, _ = splitext(basename(path))
         catfile = 'light_collection/cats/'+filename+'.cat'
-        ascii.write(source_table, catfile)
+        ascii.write(source_table, catfile, overwrite=True)
         catpath.append(catfile)
     object_table['cat_path'] = catpath
     return object_table
+
+def make_master_cat(path):
+    """
+    Create catalog of sources from deepsky
+
+    Args:
+        path: str - path to deepsky
+
+    Returns:
+        a catalog of sources with their timestamp
+    """
+    kwargs_stat = {'sigma':3.0, 'maxiters':5}
+
+    with fits.open(path) as hdu:
+        data = hdu[0].data
+        mean, median, std = sigma_clipped_stats(data, **kwargs_stat)
+        kwargs_dao = {'fwhm':10.0, 'threshold':5*std}
+        print('mean: '+str(mean))
+        print('median: '+ str(median))
+        print('std: '+str(std))
+        # Next Subtract background and use DAOStarFinder
+        print('kwargs_dao: ' +  str(kwargs_dao))
+        daofind = DAOStarFinder(**kwargs_dao)
+        sources = daofind(data - median)
+
+    filename, _ = splitext(basename(path))
+    catfile = 'light_collection/deepsky/'+filename+'.cat'
+    ascii.write(sources, catfile, overwrite=True)
+
+    # add RA and DEC to cat file
+    args_makecatalog = Table()
+    args_makecatalog['aligned_path'] = [path]
+    args_makecatalog['cat_path'] = [catfile]
+    make_catalog(args_makecatalog)
+
+    return catfile
+
 
 def sigma_clipped_wrapper(path, kwargs):
     with fits.open(path) as fitsfile:
@@ -413,7 +456,7 @@ def lightcurator(mypath, parallel=False):
         path: string, path to root directory that contains timeseries data
 
     Returns:
-        a deepsky fits file with WCS
+        a deepsky and aligned data fits files with WCS and catalogs with xy and RA/DEC coordinates
     """
     #Make pathlist
     object_table = makelist(mypath)
@@ -501,7 +544,21 @@ def lightcurator(mypath, parallel=False):
     # object_table = hstack([object_table, aligned_table])
 
     # Match Cat
-    aligned_table, cat_path_min_sources = make_catalog(aligned_table)
+    make_catalog(aligned_table)
+
+    master_cat_path = make_master_cat(fitsfile_wcs)
+    master_cat = ascii.read(master_cat_path)
+    master_ra = master_cat['ra']
+    master_dec = master_cat['dec']
+
+    master_sky = SkyCoord(ra=master_ra*u.degree, dec=master_dec*u.degree)
+#    for aligned_file in align_image:
+#
+#    c = SkyCoord(ra=ra1*u.degree, dec=dec1*u.degree)
+#    master_sky_cat = SkyCoord(ra=ra2*u.degree, dec=dec2*u.degree)
+
+#    idx, d2d, d3d = c.match_to_catalog_sky(catalog)
+
 
     return object_table
 
