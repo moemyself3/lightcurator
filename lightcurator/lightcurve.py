@@ -285,7 +285,7 @@ def parextract_path(object_table=None):
     name_source_list = zip(aligned_objects, sources)
     for path, source_table in name_source_list:
         filename, _ = splitext(basename(path))
-        catfile = 'light_collection/cats/'+filename+'.cat'
+        catfile = 'light_collection/cats/aligned/'+filename+'.cat'
         ascii.write(source_table, catfile, overwrite=True)
         catpath.append(catfile)
     object_table['cat_path'] = catpath
@@ -576,12 +576,37 @@ def lightcurator(mypath, parallel=False):
             if sep_flag:
                 matched_cat.add_row(c[row].as_void())
         filename, _ = splitext(catpath)
-        filepath = 'light_collection/cats/'+basename(filename)+'_match.cat'
+        filepath = 'light_collection/cats/matched/'+basename(filename)+'_match.cat'
         ascii.write(matched_cat, filepath, overwrite=True)
         matched_path.append(filepath)
     aligned_table['matched_path'] = matched_path
 
-    return object_table
+
+    names = list(range(len(master_cat)))
+    #names.insert(0,'DATE-OBS')
+    dtypes = list(itertools.repeat('float64', len(master_cat)))
+    #dtypes.insert(0,'<U19')
+
+    aligned_table.sort('matched_path')
+
+    row  = [{} for i in range(len(aligned_table['matched_path']))]
+
+
+    for num, path in enumerate(aligned_table['matched_path']):
+        cat = ascii.read(path)
+        row[num]=list(itertools.repeat(np.nan, len(master_cat)))
+
+        for ele, idx in enumerate(cat['idx']):
+            for source_id in range(len(master_cat)):
+                if source_id == idx:
+                    row[num][idx]=cat['flux'][ele]
+
+    timeseries_catalog = Table(rows = row, names= names, dtype=dtypes)
+    index = list(range(0, len(aligned_table['matched_path'])))
+    index = Column(index, name='index', dtype='u4')
+    timeseries_catalog.add_column(index)
+
+    return object_table, aligned_table, timeseries_catalog
 
 def do_align(path, ref_img, sigclip):
     aligned = np.zeros_like(ref_img)
@@ -595,7 +620,7 @@ def do_align(path, ref_img, sigclip):
 def setup_dirs():
     # make directory for output files
     root = 'light_collection'
-    output_directories = ['/deepsky', '/aligned', '/cats']
+    output_directories = ['/deepsky', '/aligned', '/cats/aligned', '/cats/matched']
     output_directories = [root+directory for directory in output_directories]
     for directory in output_directories:
         makedirs(directory, exist_ok=True)
