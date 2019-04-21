@@ -14,6 +14,7 @@ import astroalign as aa
 from os import listdir, makedirs, remove
 from os.path import isfile, join, basename, splitext
 from astropy.coordinates import SkyCoord
+import astropy.coordinates as coord
 from astropy import units as u
 from astropy.io import fits, ascii
 from astropy.wcs import WCS
@@ -21,6 +22,7 @@ from astropy.stats import sigma_clipped_stats
 from astropy.table import Table, Column
 from astropy.visualization import ZScaleInterval
 from astropy.time import Time
+from astroquery.vizier import Vizier
 from photutils import DAOStarFinder
 from datetime import datetime
 import matplotlib.pyplot as plt
@@ -591,7 +593,6 @@ def lightcurator(mypath, parallel=False):
 
     row  = [{} for i in range(len(aligned_table['matched_path']))]
 
-
     for num, path in enumerate(aligned_table['matched_path']):
         cat = ascii.read(path)
         row[num]=list(itertools.repeat(np.nan, len(master_cat)))
@@ -644,6 +645,29 @@ def clean():
     for directory in dirs_to_clean:
         for item in listdir(directory):
             remove(directory+'/'+item)
+
+def query_from_wcs(fits_path, radius=30):
+    """
+    SIMBAD query of VSX and UCAC catalog from wcs using CRVAL1/CRVAL2 as RA/DEC
+
+    Args:
+        path: string, path to wcs file. expects WCS keyword CRVAL1 and CRVAL2
+        radius: float, radius of query region in arcmin
+    Returns:
+        a Table list of VSX and UCAC objects in region of query
+    """
+
+    with fits.open(fits_path) as hdu:
+        header = hdu[0].header
+        ra, dec = header['CRVAL1'], header['CRVAL2']
+
+        result = Vizier.query_region(coord.SkyCoord(ra=ra, dec=dec,
+                                                unit=(u.deg, u.deg),
+                                                frame='fk5'),
+                            radius=radius*u.arcmin,
+                            catalog=['vsx','UCAC'])
+        print(result)
+        return result
 
 if __name__ == '__main__':
     print('main does nothing')
