@@ -481,7 +481,7 @@ def lightcurator(mypath, parallel=False):
     object_table.sort('date')
 
     # sample set for testing
-    object_table = object_table[0:100]
+    object_table = object_table[0:50]
     ref_index = len(object_table['date'])//2
 
     with fits.open(object_table['path'][ref_index]) as sci_data:
@@ -543,7 +543,9 @@ def lightcurator(mypath, parallel=False):
             aligned_data = aligned_hdu[0].data
             hdr = aligned_hdu[0].header
             header['DATE-OBS'] = hdr['DATE-OBS']
-            fits.writeto(aligned_filepath, aligned_data, header, overwrite=True)
+            fits.writeto(aligned_filepath, aligned_data, header, output_verify='fix', overwrite=True)
+            #header.tofile(aligned_filepath, endcard=True, overwrite=True)
+
 
     # Source extraction
     aligned_table = parextract_path()
@@ -585,9 +587,9 @@ def lightcurator(mypath, parallel=False):
 
 
     names = list(range(len(master_cat)))
-    #names.insert(0,'DATE-OBS')
+    names.append('DATE-OBS')
     dtypes = list(itertools.repeat('float64', len(master_cat)))
-    #dtypes.insert(0,'<U19')
+    dtypes.append('<U19')
 
     aligned_table.sort('matched_path')
 
@@ -596,11 +598,17 @@ def lightcurator(mypath, parallel=False):
     for num, path in enumerate(aligned_table['matched_path']):
         cat = ascii.read(path)
         row[num]=list(itertools.repeat(np.nan, len(master_cat)))
-
         for ele, idx in enumerate(cat['idx']):
             for source_id in range(len(master_cat)):
                 if source_id == idx:
                     row[num][idx]=cat['flux'][ele]
+        aligned_image_path, _ = splitext(basename(path))
+        aligned_image_path = aligned_image_path.replace('_match','')
+
+        aligned_image_path = 'light_collection/aligned/'+aligned_image_path+'.fits'
+        with fits.open(aligned_image_path) as hdu:
+            date = hdu[0].header['DATE-OBS']
+        row[num].append(date)
 
     timeseries_catalog = Table(rows = row, names= names, dtype=dtypes)
     index = list(range(0, len(aligned_table['matched_path'])))
@@ -637,7 +645,6 @@ def astrometry(fitsfile):
     if not isfile(fitsfile_wcs):
         raise FileNotFoundError('The solved fits file does not exist')
 
-    # get RA,DEC coordinates to do a skymatch
     return fitsfile_wcs
 
 def clean():
@@ -666,8 +673,8 @@ def query_from_wcs(fits_path, radius=30):
                                                 frame='fk5'),
                             radius=radius*u.arcmin,
                             catalog=['vsx','UCAC'])
-        print(result)
-        return result
+    print(result)
+    return result
 
 if __name__ == '__main__':
     print('main does nothing')
