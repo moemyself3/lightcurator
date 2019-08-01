@@ -481,7 +481,7 @@ def lightcurator(mypath, parallel=False):
     object_table.sort('date')
 
     # sample set for testing
-    object_table = object_table[0:50]
+    #object_table = object_table[0:100]
     ref_index = len(object_table['date'])//2
 
     with fits.open(object_table['path'][ref_index]) as sci_data:
