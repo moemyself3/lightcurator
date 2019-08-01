@@ -30,15 +30,16 @@ object_table = lc.do_lightcurve(object_table)
 
 The process follows:
 1. Take image list
-   - Options (*or considerations)
-     - Reduce images
-     - Assign WCS*
-2. Align images (How does reducing affect WCS?)
-2.1 [Create a deep sky image pending]
-3. Sorce extraction [from deepsky image]
-4. Match sources between images [pending]
-5. Create Timeseries **plot** of different sources
+2. Align images
+3. Create a deepsky image
+4. Plate solve deepsky using `astrometery`
+5. Sorce extraction from deepsky image
 6. Create **reference image** with all candidate sources circled
+7. Match sources between aligned images
+8. Cross match sources from aligned images with sources from deepsky image
+9. Create Timeseries **plot** of different sources
+10. Cross match sources with catalogs like VSX and GCVS 
+
 
 # Credits
 

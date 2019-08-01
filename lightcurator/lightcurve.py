@@ -614,6 +614,7 @@ def lightcurator(mypath, parallel=False):
     index = list(range(0, len(aligned_table['matched_path'])))
     index = Column(index, name='index', dtype='u4')
     timeseries_catalog.add_column(index)
+    timeseries_catalog.write('light_collection/cats/timeseries_catalog.ecsv', format='ascii.ecsv')
 
     return object_table, aligned_table, timeseries_catalog
 
@@ -661,7 +662,7 @@ def query_from_wcs(fits_path, radius=30):
         path: string, path to wcs file. expects WCS keyword CRVAL1 and CRVAL2
         radius: float, radius of query region in arcmin
     Returns:
-        a Table list of VSX and UCAC objects in region of query
+        a Table list of VSX, GCVS,  I/340 (UCAC5), I/345 (GAIA DR2) objects in region of query
     """
 
     with fits.open(fits_path) as hdu:
@@ -672,7 +673,7 @@ def query_from_wcs(fits_path, radius=30):
                                                 unit=(u.deg, u.deg),
                                                 frame='fk5'),
                             radius=radius*u.arcmin,
-                            catalog=['vsx','UCAC'])
+                            catalog=['B/vsx','B/gcvs','I/340','I/345'])
     print(result)
     return result
 
