@@ -1,4 +1,6 @@
 [![Documentation Status](https://readthedocs.org/projects/lightcurator/badge/?version=latest)](https://lightcurator.readthedocs.io/en/latest/?badge=latest)
+[![DOI](https://zenodo.org/badge/124146048.svg)](https://zenodo.org/badge/latestdoi/124146048)
+
 
 # LightCurve
 
