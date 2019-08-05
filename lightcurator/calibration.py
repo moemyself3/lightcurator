@@ -14,7 +14,6 @@ import ccdproc
 import numpy as np
 from astropy.stats import mad_std
 from astropy import units as u
-import os
 import warnings
 
 def add_units(path, units='adu'):
@@ -31,8 +30,6 @@ def add_units(path, units='adu'):
     ic1 = ccdproc.ImageFileCollection(location=path)
     # check for units in header
     if 'bunit' not in ic1.summary.colnames:
-        newpath = path+'/unitsadded'
-        os.mkdir(newpath)
         warnings.warn('Overwriting Original Header!!!')
         for hdu in ic1.hdus(overwrite=True):
             hdu.header['bunit'] = 'adu'
