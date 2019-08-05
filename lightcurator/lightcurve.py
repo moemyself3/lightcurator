@@ -184,6 +184,13 @@ def paralign(object_table, strict=True):
     # sort table by date
     object_table.sort('date')
 
+    # get date of observation
+    date_obs = object_table['date'][0]
+    date_obs = datetime.strptime(date_obs,'%Y-%m-%dT%H:%M:%S').strftime('%Y-%m-%dT%H%M%S')
+
+    # make root path
+    root = 'light_collection/'+date_obs
+
     # pick reference image
     ref_index = len(data)//2
     ref_img = data[ref_index]
@@ -193,7 +200,7 @@ def paralign(object_table, strict=True):
     pool = mp.Pool(processes=process_limit)
     strictlist = [strict]*len(data)
     # align images to reference image
-    args_align = zip(object_table['path'], object_table['filtered'], object_table['ref'], object_table['sigclip'], strictlist)
+    args_align = zip(object_table['path'], object_table['filtered'], object_table['ref'], object_table['sigclip'], itertools.repeat(root), strictlist)
     output = pool.starmap(tryregister, args_align)
     object_table['aligned'], object_table['sigclip'] = zip(*output)
     pool.close()
@@ -240,7 +247,7 @@ def parextract_table(object_table):
 
     return object_table
 
-def parextract_path(object_table=None):
+def parextract_path(root, object_table=None):
     """
     Create catalog of sources
 
@@ -256,7 +263,7 @@ def parextract_path(object_table=None):
     """
     if not object_table:
         object_table = Table()
-    alignpath = 'light_collection/aligned/'
+    alignpath = root+'/aligned/'
     object_table = makelist(alignpath, 'aligned_path')
 
     aligned_objects = object_table['aligned_path']
@@ -287,13 +294,13 @@ def parextract_path(object_table=None):
     name_source_list = zip(aligned_objects, sources)
     for path, source_table in name_source_list:
         filename, _ = splitext(basename(path))
-        catfile = 'light_collection/cats/aligned/'+filename+'.cat'
+        catfile = root+'/cats/aligned/'+filename+'.cat'
         ascii.write(source_table, catfile, overwrite=True)
         catpath.append(catfile)
     object_table['cat_path'] = catpath
     return object_table
 
-def make_master_cat(path):
+def make_master_cat(path, root):
     """
     Create catalog of sources from deepsky
 
@@ -318,7 +325,7 @@ def make_master_cat(path):
         sources = daofind(data - median)
 
     filename, _ = splitext(basename(path))
-    catfile = 'light_collection/deepsky/'+filename+'.cat'
+    catfile = root+'/deepsky/'+filename+'.cat'
     ascii.write(sources, catfile, overwrite=True)
 
     # add RA and DEC to cat file
@@ -430,7 +437,7 @@ def hotpixfix(object_table, sigclip=4.5):
     pool.join()
     return object_table
 
-def tryregister(path, source, target, sigclip, strict=True):
+def tryregister(path, source, target, sigclip, root, strict=True):
     attempts = 0
     while attempts < 3:
         try:
@@ -443,7 +450,7 @@ def tryregister(path, source, target, sigclip, strict=True):
                 hdr['DATE-OBS'] = sci_data[0].header['DATE-OBS']
 
             filename, _ = splitext(basename(path))
-            aligned_fits = 'light_collection/aligned/'+filename+'_aligned.fits'
+            aligned_fits = root+'/aligned/'+filename+'_aligned.fits'
             hdul.writeto(aligned_fits)
             return aligned, sigclip
         except aa.MaxIterError:
@@ -487,7 +494,10 @@ def lightcurator(mypath, parallel=False):
     with fits.open(object_table['path'][ref_index]) as sci_data:
          ref_img = hotpixfix_wrapper(sci_data[0].data)
 
-    setup_dirs()
+    # setup directories by date and time of beginning of observation
+    date_obs = object_table['date'][0]
+    date_obs = datetime.strptime(date_obs,'%Y-%m-%dT%H:%M:%S').strftime('%Y-%m-%dT%H%M%S')
+    root, _ = setup_dirs(date_obs)
 
     # read, filter, align images
     sigclip = 4.5
@@ -499,7 +509,7 @@ def lightcurator(mypath, parallel=False):
         for item in object_table['path']:
             with fits.open(item) as sci_data:
                 filtered = hotpixfix_wrapper(sci_data[0].data)
-            aligned, _ = tryregister(item, filtered, ref_img, sigclip)
+            aligned, _ = tryregister(item, filtered, ref_img, sigclip, root)
             deepsky = deepsky + aligned
         print('deepsky complete!')
         end = time.time()
@@ -510,7 +520,7 @@ def lightcurator(mypath, parallel=False):
         process_limit = mp.cpu_count() - 1
         pool = mp.Pool(processes=process_limit)
 
-        args_do_deepsky = zip(object_table['path'], itertools.repeat(ref_img), itertools.repeat(sigclip))
+        args_do_deepsky = zip(object_table['path'], itertools.repeat(ref_img), itertools.repeat(sigclip), itertools.repeat(root))
         deepsky = sum(pool.starmap(do_align, args_do_deepsky))
         pool.close()
         pool.join()
@@ -518,11 +528,11 @@ def lightcurator(mypath, parallel=False):
         end = time.time()
         print('time: '+str(end - start))
 
-    makepic(deepsky, 'light_collection/deepsky/deepsky_preview')
+    makepic(deepsky, root+'/deepsky/deepsky_preview')
     hdu = fits.PrimaryHDU(deepsky)
     hdul = fits.HDUList([hdu])
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    deepskyfits = 'light_collection/deepsky/deepsky_'+timestamp+'.fits'
+    deepskyfits = root+'/deepsky/deepsky_'+timestamp+'.fits'
     hdul.writeto(deepskyfits)
 
     # Do astrometry
@@ -536,7 +546,7 @@ def lightcurator(mypath, parallel=False):
         header = thewcs.to_header()
 
     # attach wcs to aligned frames
-    alignpath = 'light_collection/aligned/'
+    alignpath = root+'/aligned/'
     for aligned_file in listdir(alignpath):
         aligned_filepath = alignpath+aligned_file
         with fits.open(aligned_filepath) as aligned_hdu:
@@ -548,7 +558,7 @@ def lightcurator(mypath, parallel=False):
 
 
     # Source extraction
-    aligned_table = parextract_path()
+    aligned_table = parextract_path(root)
 
     # Not necessary to continue
     # Need to sort figure out how to correlate them to the original data
@@ -557,7 +567,7 @@ def lightcurator(mypath, parallel=False):
     # Match Cat
     make_catalog(aligned_table)
 
-    master_cat_path = make_master_cat(fitsfile_wcs)
+    master_cat_path = make_master_cat(fitsfile_wcs, root)
     master_cat = ascii.read(master_cat_path)
     master_ra = master_cat['ra']
     master_dec = master_cat['dec']
@@ -580,7 +590,7 @@ def lightcurator(mypath, parallel=False):
             if sep_flag:
                 matched_cat.add_row(c[row].as_void())
         filename, _ = splitext(catpath)
-        filepath = 'light_collection/cats/matched/'+basename(filename)+'_match.cat'
+        filepath = root+'/cats/matched/'+basename(filename)+'_match.cat'
         ascii.write(matched_cat, filepath, overwrite=True)
         matched_path.append(filepath)
     aligned_table['matched_path'] = matched_path
@@ -605,7 +615,7 @@ def lightcurator(mypath, parallel=False):
         aligned_image_path, _ = splitext(basename(path))
         aligned_image_path = aligned_image_path.replace('_match','')
 
-        aligned_image_path = 'light_collection/aligned/'+aligned_image_path+'.fits'
+        aligned_image_path = root+'/aligned/'+aligned_image_path+'.fits'
         with fits.open(aligned_image_path) as hdu:
             date = hdu[0].header['DATE-OBS']
         row[num].append(date)
@@ -614,27 +624,27 @@ def lightcurator(mypath, parallel=False):
     index = list(range(0, len(aligned_table['matched_path'])))
     index = Column(index, name='index', dtype='u4')
     timeseries_catalog.add_column(index)
-    timeseries_catalog.write('light_collection/cats/timeseries_catalog.ecsv', format='ascii.ecsv')
+    timeseries_catalog.write(root+'/cats/timeseries_catalog.ecsv', format='ascii.ecsv')
 
     return object_table, aligned_table, timeseries_catalog
 
-def do_align(path, ref_img, sigclip):
+def do_align(path, ref_img, sigclip, root):
     aligned = np.zeros_like(ref_img)
 
     with fits.open(path) as sci_data:
         filtered = hotpixfix_wrapper(sci_data[0].data)
 
-    aligned, _ = tryregister(path, filtered, ref_img, sigclip)
+    aligned, _ = tryregister(path, filtered, ref_img, sigclip, root)
     return aligned
 
-def setup_dirs():
+def setup_dirs(date_obs='9999'):
     # make directory for output files
-    root = 'light_collection'
+    root = 'light_collection/'+date_obs
     output_directories = ['/deepsky', '/aligned', '/cats/aligned', '/cats/matched']
     output_directories = [root+directory for directory in output_directories]
     for directory in output_directories:
         makedirs(directory, exist_ok=True)
-    return output_directories
+    return root, output_directories
 
 def astrometry(fitsfile):
     # Take aligned image and add wcs
@@ -648,8 +658,8 @@ def astrometry(fitsfile):
 
     return fitsfile_wcs
 
-def clean():
-    dirs_to_clean = setup_dirs()
+def clean(date_obs='9999'):
+    _, dirs_to_clean = setup_dirs(date_obs)
     for directory in dirs_to_clean:
         for item in listdir(directory):
             remove(directory+'/'+item)
@@ -678,4 +688,4 @@ def query_from_wcs(fits_path, radius=30):
     return result
 
 if __name__ == '__main__':
-    print('main does nothing')
+    print('lightcurve')
