@@ -423,10 +423,10 @@ def makedata(object_table):
     object_table = hotpixfix(object_table)
     return object_table
 
-def hotpixfix_wrapper(sci_data, sigclip=4.5):
+def hotpixfix_wrapper(sci_data, sigclip=5):
     return ccdproc.cosmicray_lacosmic(sci_data, sigclip=sigclip)[0]
 
-def hotpixfix(object_table, sigclip=4.5):
+def hotpixfix(object_table, sigclip=5):
     object_table['sigclip'] = sigclip
     process_limit = mp.cpu_count() - 1
     pool = mp.Pool(processes=process_limit)
@@ -460,6 +460,8 @@ def tryregister(path, source, target, sigclip, root, strict=True):
                 sigclip+=5
                 source = hotpixfix_wrapper(path,sigclip)
                 attempts += 1
+        except Exception:
+                return np.zeros_like(source), sigclip
     return np.zeros_like(source), sigclip
 
 def lightcurator(mypath, parallel=False):
@@ -500,7 +502,7 @@ def lightcurator(mypath, parallel=False):
     root, _ = setup_dirs(date_obs)
 
     # read, filter, align images
-    sigclip = 4.5
+    sigclip = 5
     print('is parallel: ' + str(parallel))
     if not parallel:
         print('deepsky process: serial')
