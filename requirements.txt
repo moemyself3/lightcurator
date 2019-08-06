@@ -1,4 +1,4 @@
-astroalign == 1.0.1
+astroalign == 1.0.4
 astropy >= 3.1.2
 astroquery >=0.3
 matplotlib >= 2.0.2
