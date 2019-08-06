@@ -32,6 +32,7 @@ import subprocess
 import ccdproc
 import itertools
 import time
+import warnings
 
 def plot(object_table):
     """
@@ -186,7 +187,15 @@ def paralign(object_table, strict=True):
 
     # get date of observation
     date_obs = object_table['date'][0]
-    date_obs = datetime.strptime(date_obs,'%Y-%m-%dT%H:%M:%S').strftime('%Y-%m-%dT%H%M%S')
+    try:
+        date_obs=datetime.datetime.strptime(
+                    date_obs,'%Y-%m-%dT%H:%M:%S.%f'
+                    ).strftime('%Y-%m-%dT%H%M%S')
+    except ValueError:
+        warnings.warn('Check header keyword DATE-OBS for format')
+        date_obs=datetime.datetime.strptime(
+                    date_obs,'%Y-%m-%dT%H:%M:%S'
+                    ).strftime('%Y-%m-%dT%H%M%S')
 
     # make root path
     root = 'light_collection/'+date_obs
@@ -498,7 +507,15 @@ def lightcurator(mypath, parallel=False):
 
     # setup directories by date and time of beginning of observation
     date_obs = object_table['date'][0]
-    date_obs = datetime.strptime(date_obs,'%Y-%m-%dT%H:%M:%S').strftime('%Y-%m-%dT%H%M%S')
+    try:
+        date_obs=datetime.datetime.strptime(
+                    date_obs,'%Y-%m-%dT%H:%M:%S.%f'
+                    ).strftime('%Y-%m-%dT%H%M%S')
+    except ValueError:
+        warnings.warn('Check header keyword DATE-OBS for format')
+        date_obs=datetime.datetime.strptime(
+                    date_obs,'%Y-%m-%dT%H:%M:%S'
+                    ).strftime('%Y-%m-%dT%H%M%S')
     root, _ = setup_dirs(date_obs)
 
     # read, filter, align images
@@ -508,7 +525,9 @@ def lightcurator(mypath, parallel=False):
         print('deepsky process: serial')
         start = time.time()
         deepsky=np.zeros_like(ref_img)
-        for item in object_table['path']:
+        table_length = len(object_table['path'])
+        for counter, item in enumerate(object_table['path']):
+            print(str(counter)+'/'+str(table_length))
             with fits.open(item) as sci_data:
                 filtered = hotpixfix_wrapper(sci_data[0].data)
             aligned, _ = tryregister(item, filtered, ref_img, sigclip, root)
